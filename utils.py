@@ -3,6 +3,7 @@ import networkx as nx
 import pandas as pd
 
 
+INTERVENTION_CLASSES = ["NS", "PRO", "ANTI"]
 GENE_NAME_A_COL = "Official Symbol Interactor A"
 GENE_NAME_B_COL = "Official Symbol Interactor B"
 
@@ -19,7 +20,7 @@ def load_synergyage() -> pd.DataFrame:
 
 def get_synergyage_genes(df_synergy: pd.DataFrame) -> Set[str]:
     genes_syn = set([])
-    for genes_str in df_syn["genes_str"]:
+    for genes_str in df_synergy["genes_str"]:
         genes_syn = genes_syn.union( set( genes_str.split(";") ) )
     return genes_syn
 
