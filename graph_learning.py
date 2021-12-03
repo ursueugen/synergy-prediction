@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 import networkx as nx
 import networkx.generators.random_graphs as nx_random_graphs
@@ -13,65 +15,59 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 
-def create_model():
-    INPUT_DIM: int = 1
-    HIDDEN_DIM: int = 32
-    OUTPUT_DIM: int = 3
-    model = geo_nn.Sequential('x, edge_index, batch', [
-        (geo_nn.GCNConv(INPUT_DIM, HIDDEN_DIM), 'x, edge_index -> x'),
-        nn.ReLU(inplace = True),
-        (geo_nn.GCNConv(HIDDEN_DIM, HIDDEN_DIM), 'x, edge_index -> x'),
-        nn.ReLU(inplace = True),
-        (geo_nn.global_mean_pool, 'x, batch -> x'),
-        nn.Linear(HIDDEN_DIM, OUTPUT_DIM),
-    ])
-    return model
-
-def create_toy_graph():
-    g = nx.Graph()
-    g.add_nodes_from([
-        "A", 
-        "B", 
-        "C"
-    ])
-    g.add_edges_from([("A", "B"), ("B", "C")])
-    return g
-
-def create_random_graph(num_nodes = 10, p = 0.3):
-    return nx_random_graphs.erdos_renyi_graph(num_nodes, p)
-
-def create_random_graph_loader(size = 5):
-    N = 10
+def loader_from_graph_list(
+    graph_list: List[nx.Graph], 
+    batch_size: int
+    ) -> DataLoader:
     data_list = []
-    for _ in range(size):
-        g = create_random_graph(num_nodes = N)
+    for g in graph_list:
         data = geo_utils.from_networkx(g)
-        data.x = torch.as_tensor(np.random.binomial(n = 1, p = 0.1, size = N)).reshape(N, 1).type(torch.FloatTensor)  # [N, 1]; Linear layer requires float
+        data.x = None  # extract from networkx somehow :)
+        raise NotImplementedError
+        data.x = data.x.reshape(data.x.shape[0], 1)  # [Num_nodes, num_features]
+        data.x = data.x.type(torch.FloatTensor)  # Linear layer requires float
         data.y = torch.as_tensor(np.random.permutation([0, 1, 0])).type(torch.LongTensor)  # [3]
         data_list.append(data)
-    return DataLoader(data_list, batch_size = 4)
+    return DataLoader(data_list, batch_size = batch_size)
 
-def return_dataset_data_example(from_loader = False):
-    dataset = TUDataset(root="./TUDataset", name="MUTAG")
-    if not from_loader:
-        return dataset[0]
-    else:
-        loader = DataLoader(dataset, batch_size=4, shuffle=False)
-        for d in loader:
-            data = d
-            break
-        return data
 
-def train_graph_classification(model, train_loader, test_loader, num_epochs):
+def create_GNN_model(
+    input_dim, 
+    hidden_dim, 
+    output_dim, 
+    verbose: bool = False
+    ) -> geo_nn.Sequential:
+    model = geo_nn.Sequential('x, edge_index, batch', [
+        (geo_nn.GCNConv(input_dim, hidden_dim), 'x, edge_index -> x'),
+        nn.ReLU(inplace = True),
+        (geo_nn.GCNConv(hidden_dim, hidden_dim), 'x, edge_index -> x'),
+        nn.ReLU(inplace = True),
+        (geo_nn.global_mean_pool, 'x, batch -> x'),
+        nn.Linear(hidden_dim, output_dim),
+    ])
+    if verbose:
+        print(f"{model}")  # describe model
+    return model
+
+
+def train_graph_classification(
+    model: geo_nn.Sequential,
+    train_loader: DataLoader, 
+    test_loader: DataLoader, 
+    num_epochs: int):
+    
+    num_classes = train_loader.dataset[0].y.shape[0]
+    batch_size = train_loader.batch_size
+    
     loss_fn = nn.BCEWithLogitsLoss()  # Use cross-entropy + soft-max to get probability output
     optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     # Utility function for accuracy
-    def get_acc(model, loader):
+    def get_acc(model, loader) -> float:
         n_total = 0
         n_ok = 0
         for data in loader:
-            outs = model(data.x, data.edge_index, data.batch).reshape(3*4)
+            outs = model(data.x, data.edge_index, data.batch).reshape(num_classes * batch_size)
             n_ok += ((outs>0) == data.y).sum().item()
             n_total += data.y.shape[0]
         return n_ok / n_total
@@ -89,16 +85,3 @@ def train_graph_classification(model, train_loader, test_loader, num_epochs):
         acc_train = get_acc(model, train_loader)
         acc_test = get_acc(model, test_loader)
         print(f"[Epoch {epoch+1}/{num_epochs}] Loss: {loss} | Train: {acc_train:.3f} | Test: {acc_test:.3f}")
-
-if __name__ == "__main__":
-
-    model = create_model()
-    train_loader = create_random_graph_loader(100)
-    test_loader = create_random_graph_loader(20)
-    print("Start training")
-    train_graph_classification(model, train_loader, test_loader, num_epochs = 30)
-
-    # Likely issue: tensor dimensions for batched inputs
-
-    # train_loader = DataLoader(train_data_list, batch_size = 64, shuffle = True)
-    # test_loader = DataLoader(test_data_list, batch_size = 64, shuffle = False)
