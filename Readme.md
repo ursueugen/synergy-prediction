@@ -6,14 +6,15 @@ Install the `conda` environment `env.yml`.
 
 ## Planning
 
-1. Setup the system and perform a prediction - Done \[about 70% accuracy\]
+1. Setup the system and perform a prediction - Done \[about 52% (multi-class) accuracy\]
 
 1a. Analyze the dataset for:
 
-- class imbalance (add appropriate metrics)
+- class imbalance (add appropriate metrics)  # Cross-entropy weights?
 - gene interventions bias (duplicates)
 
 1b. Adjust the learning objective to learning probabilities
+- Cross-entropy loss
 
 1c. Add monitoring system for models and setup infrastructure.
 

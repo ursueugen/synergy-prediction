@@ -17,6 +17,21 @@ from torch_geometric.loader import DataLoader
 import graph_learning
 
 
+class TestGNN(unittest.TestCase):
+
+    def setUp(self) -> None:
+        return super().setUp()
+    
+    # def test_GNN_training_loop(self):
+    #     graph_learning.train_graph_classification(
+    #         self.model, 
+    #         self.dataloader, 
+    #         self.dataloader,
+    #         num_epochs=2,
+    #         verbose=False)
+    #     self.assertTrue(True)
+
+
 class TestGNNDemo(unittest.TestCase):
 
     def setUp(self) -> None:

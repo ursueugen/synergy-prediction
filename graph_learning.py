@@ -1,5 +1,5 @@
 from typing import List
-# import dataclasses
+import dataclasses
 
 import numpy as np
 import networkx as nx
@@ -15,6 +15,7 @@ import torch_geometric.utils as geo_utils
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
+import sklearn.metrics as metrics
 
 # def datalist_from_graph_list(
 #     graph_list: List[nx.Graph], 
@@ -50,11 +51,17 @@ def create_GNN_model(
         nn.ReLU(inplace = True),
         (geo_nn.global_mean_pool, 'x, batch -> x'),
         nn.Linear(hidden_dim, output_dim),
+        nn.Sigmoid()
     ])
     if verbose:
         print(f"{model}")  # describe model
     return model
 
+@dataclasses.dataclass(frozen=True, eq=True, repr=True)
+class ModelMetrics:
+    acc: float
+    precision: float
+    recall: float
 
 def train_graph_classification(
     model: geo_nn.Sequential,
@@ -63,33 +70,45 @@ def train_graph_classification(
     num_epochs: int,
     verbose: bool = True):
     
-    num_classes = train_loader.dataset[0].y.shape[0]
-    # batch_size = train_loader.batch_size
-    
-    loss_fn = nn.BCEWithLogitsLoss()  # Use cross-entropy + soft-max to get probability output
+    loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     # Utility function for accuracy
     def get_acc(model, loader) -> float:
-        n_total = 0
-        n_ok = 0
+        yhats_tensors = []
+        ys_tensors = []
         for data in loader:
-            outs = model(data.x, data.edge_index, data.batch).reshape(data.y.shape[0])
-            n_ok += ((outs>0) == data.y).sum().item()
-            n_total += data.y.shape[0]
-        return n_ok / n_total
+            outs = model(data.x, data.edge_index, data.batch)
+            yhats_tensors.append(
+                outs.detach()  # detach tensor from grad
+            )
+            ys_tensors.append(
+                data.y.reshape(*outs.shape)
+            )
+        yhats_tensors = torch.cat(yhats_tensors, dim=0)
+        yhats = np.argmax(yhats_tensors, axis=1)
+        ys_tensors = torch.cat(ys_tensors, dim=0)
+        ys = np.argmax(ys_tensors, axis=1)
+        model_metrics = ModelMetrics(
+            acc = metrics.accuracy_score(ys, yhats),
+            precision = metrics.precision_score(ys, yhats, average="micro"),
+            recall = metrics.recall_score(ys, yhats, average="micro")
+        )
+        return model_metrics
     
     for epoch in range(num_epochs):
         for data in train_loader:
             # Zero grads -> forward pass -> compute loss -> backprop
             optimizer.zero_grad()
-            outs = model(data.x, data.edge_index, data.batch).reshape(data.y.shape[0])
-            loss = loss_fn(outs, data.y.float())  # no train_mask
+            outs = model(data.x, data.edge_index, data.batch)
+            loss = loss_fn(outs, data.y.float().reshape(outs.shape))  # no train_mask
             loss.backward()
             optimizer.step()
 
         # Compute accuracies
-        acc_train = get_acc(model, train_loader)
-        acc_test = get_acc(model, test_loader)
+        metrics_train = get_acc(model, train_loader)
+        metrics_test = get_acc(model, test_loader)
         if verbose:
-            print(f"[Epoch {epoch+1}/{num_epochs}] Loss: {loss} | Train: {acc_train:.3f} | Test: {acc_test:.3f}")
+            print(f"[Epoch {epoch+1}/{num_epochs}] Loss: {loss:.4f} | "
+            f"Train: {metrics_train.acc:.2f} {metrics_train.precision:.2f} {metrics_train.recall:.2f} | "
+            f"Test: {metrics_test.acc:.2f} {metrics_test.precision:.2f} {metrics_test.recall:.2f}")
