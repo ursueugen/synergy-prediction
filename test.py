@@ -15,6 +15,7 @@ from torch_geometric.loader import DataLoader
 
 
 import graph_learning
+import utils
 
 
 class TestGNN(unittest.TestCase):
