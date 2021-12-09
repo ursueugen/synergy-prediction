@@ -17,20 +17,6 @@ from torch_geometric.loader import DataLoader
 
 import sklearn.metrics as metrics
 
-# def datalist_from_graph_list(
-#     graph_list: List[nx.Graph], 
-#     batch_size: int
-#     ) -> List[Data]:
-#     data_list = []
-#     for g in graph_list:
-#         data = geo_utils.from_networkx(g)
-#         data.x = None  # extract from networkx somehow :)
-#         raise NotImplementedError
-#         data.x = data.x.reshape(data.x.shape[0], 1)  # [Num_nodes, num_features]
-#         data.x = data.x.type(torch.FloatTensor)  # Linear layer requires float
-#         data.y = torch.as_tensor(np.random.permutation([0, 1, 0])).type(torch.LongTensor)  # [3]
-#         data_list.append(data)
-#     return data_list
 
 def loader_from_datalist(
     datalist: List[Data], 

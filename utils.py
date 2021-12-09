@@ -1,15 +1,19 @@
-from typing import Set, Tuple
+from typing import Set, Tuple, List, Union
+from pathlib import Path
 import numpy as np
 import networkx as nx
 import pandas as pd
 import torch
 import torch_geometric.utils as geo_utils
+from torch_geometric.data import Data
+
 
 
 
 INTERVENTION_CLASSES = ["NS", "PRO", "ANTI"]
 GENE_NAME_A_COL = "Official Symbol Interactor A"
 GENE_NAME_B_COL = "Official Symbol Interactor B"
+DATALISTS_SAVE_DIR = "./data/datalists"
 
 
 def load_biogrid() -> pd.DataFrame:
@@ -28,7 +32,7 @@ def get_synergyage_genes(df_synergy: pd.DataFrame) -> Set[str]:
         genes_syn = genes_syn.union( set( genes_str.split(";") ) )
     return genes_syn
 
-def get_synergyage_subset_with_biogrid_gene_names() -> pd.Dataframe:
+def get_synergyage_subset_with_biogrid_gene_names() -> pd.DataFrame:
     """
     Return: SynergyAge dataframe subset with genes whose names
      are readily found in BioGrid.
@@ -71,14 +75,13 @@ def encode_intervention_class(intervention_class: str) -> torch.Tensor:
     return torch.as_tensor(code).type(torch.LongTensor)
 
 
-def build_graph_and_target_lists(
+def build_datalist(
     synergy: pd.DataFrame, 
     biogrid: pd.DataFrame
     ) -> Tuple[list, list]:
     
-    graph_list = []
-    target_list = []
-    for _, row in synergy.iterrows():
+    data_list = []
+    for i, row in synergy.iterrows():
         intervention_genes = row["genes_str"].split(";")
         # For removing the nodes that are KO
         # biogrid_mask = ( (~df_biogrid[GENE_NAME_A_COL].isin(intervention_genes)) & (~df_biogrid[GENE_NAME_B_COL].isin(intervention_genes)))
@@ -94,22 +97,38 @@ def build_graph_and_target_lists(
                 G.nodes[node]["HAS_INTERVENTION"] = 1
             else:
                 G.nodes[node]["HAS_INTERVENTION"] = 0
-        graph_list.append(G)
+        # graph_list.append(G)
 
         class_encoded: torch.Tensor = encode_intervention_class(row["LIFESPAN_CLASS"])
-        target_list.append(class_encoded)
-    return (graph_list, target_list)
-
-
-def build_datalist(graph_list: list, target_list: list) -> list:
-    data_list = []
-    for graph, target in zip(graph_list, target_list):
-        data = geo_utils.from_networkx(graph, group_node_attrs=["HAS_INTERVENTION"])
+        # target_list.append(class_encoded)
+    
+        data = geo_utils.from_networkx(G, group_node_attrs=["HAS_INTERVENTION"])
+        data.intervention_genes = intervention_genes
+        data.source_idx = i
         data.x = data.x.type(torch.FloatTensor)
-        data.y = target
+        data.y = class_encoded
         assert data.y.type() == 'torch.LongTensor'
         data_list.append(data)
     return data_list
+
+def save_datalist(datalist: List[Data], name: str, override: bool = False) -> None:
+    dir_path = Path(".") / DATALISTS_SAVE_DIR / name
+    dir_path.mkdir(parents=True, exist_ok=True)
+    if dir_path.exists() and (not override):
+        raise RuntimeError
+    for i, data in enumerate(datalist):
+        fpath = dir_path / f"{name}-{i}.pt"
+        torch.save(data, fpath)
+
+def load_datalist(dir_path: Union[Path, str]) -> List[Data]:
+    if not Path(dir_path).exists():
+        raise RuntimeError(f"Directory doesn't exist: {dir_path}")
+    else:
+        data_list = []
+        for fpath in Path(dir_path).glob("*.pt"):
+            data = torch.load(fpath)
+            data_list.append(data)
+        return data_list
 
 
 def graph_from_biogrid(df_biogrid: pd.DataFrame) -> nx.Graph:
