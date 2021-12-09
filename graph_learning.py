@@ -1,4 +1,5 @@
 from typing import List
+# import dataclasses
 
 import numpy as np
 import networkx as nx
@@ -15,21 +16,26 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 
-def loader_from_graph_list(
-    graph_list: List[nx.Graph], 
-    batch_size: int
-    ) -> DataLoader:
-    data_list = []
-    for g in graph_list:
-        data = geo_utils.from_networkx(g)
-        data.x = None  # extract from networkx somehow :)
-        raise NotImplementedError
-        data.x = data.x.reshape(data.x.shape[0], 1)  # [Num_nodes, num_features]
-        data.x = data.x.type(torch.FloatTensor)  # Linear layer requires float
-        data.y = torch.as_tensor(np.random.permutation([0, 1, 0])).type(torch.LongTensor)  # [3]
-        data_list.append(data)
-    return DataLoader(data_list, batch_size = batch_size)
+# def datalist_from_graph_list(
+#     graph_list: List[nx.Graph], 
+#     batch_size: int
+#     ) -> List[Data]:
+#     data_list = []
+#     for g in graph_list:
+#         data = geo_utils.from_networkx(g)
+#         data.x = None  # extract from networkx somehow :)
+#         raise NotImplementedError
+#         data.x = data.x.reshape(data.x.shape[0], 1)  # [Num_nodes, num_features]
+#         data.x = data.x.type(torch.FloatTensor)  # Linear layer requires float
+#         data.y = torch.as_tensor(np.random.permutation([0, 1, 0])).type(torch.LongTensor)  # [3]
+#         data_list.append(data)
+#     return data_list
 
+def loader_from_datalist(
+    datalist: List[Data], 
+    batch_size: int = 1
+    ) -> DataLoader:
+    return DataLoader(datalist, batch_size = batch_size)
 
 def create_GNN_model(
     input_dim, 
@@ -54,10 +60,11 @@ def train_graph_classification(
     model: geo_nn.Sequential,
     train_loader: DataLoader, 
     test_loader: DataLoader, 
-    num_epochs: int):
+    num_epochs: int,
+    verbose: bool = True):
     
     num_classes = train_loader.dataset[0].y.shape[0]
-    batch_size = train_loader.batch_size
+    # batch_size = train_loader.batch_size
     
     loss_fn = nn.BCEWithLogitsLoss()  # Use cross-entropy + soft-max to get probability output
     optimizer = optim.Adam(model.parameters(), lr=0.01)
@@ -67,7 +74,7 @@ def train_graph_classification(
         n_total = 0
         n_ok = 0
         for data in loader:
-            outs = model(data.x, data.edge_index, data.batch).reshape(num_classes * batch_size)
+            outs = model(data.x, data.edge_index, data.batch).reshape(data.y.shape[0])
             n_ok += ((outs>0) == data.y).sum().item()
             n_total += data.y.shape[0]
         return n_ok / n_total
@@ -76,7 +83,7 @@ def train_graph_classification(
         for data in train_loader:
             # Zero grads -> forward pass -> compute loss -> backprop
             optimizer.zero_grad()
-            outs = model(data.x, data.edge_index, data.batch).reshape(3*4)
+            outs = model(data.x, data.edge_index, data.batch).reshape(data.y.shape[0])
             loss = loss_fn(outs, data.y.float())  # no train_mask
             loss.backward()
             optimizer.step()
@@ -84,4 +91,5 @@ def train_graph_classification(
         # Compute accuracies
         acc_train = get_acc(model, train_loader)
         acc_test = get_acc(model, test_loader)
-        print(f"[Epoch {epoch+1}/{num_epochs}] Loss: {loss} | Train: {acc_train:.3f} | Test: {acc_test:.3f}")
+        if verbose:
+            print(f"[Epoch {epoch+1}/{num_epochs}] Loss: {loss} | Train: {acc_train:.3f} | Test: {acc_test:.3f}")
