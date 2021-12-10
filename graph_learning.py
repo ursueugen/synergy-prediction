@@ -43,20 +43,45 @@ def create_GNN_model(
         print(f"{model}")  # describe model
     return model
 
+def create_GAT_model(
+    input_dim,
+    hidden_dim,
+    output_dim,
+    verbose: bool = False
+    ) -> geo_nn.Sequential:
+    model = geo_nn.Sequential('x, edge_index, batch', [
+        (geo_nn.GATv2Conv(input_dim, hidden_dim), 'x, edge_index -> x'),
+        nn.ReLU(inplace = True),
+        (geo_nn.GATv2Conv(hidden_dim, hidden_dim), 'x, edge_index -> x'),
+        nn.ReLU(inplace = True),
+        (geo_nn.global_mean_pool, 'x, batch -> x'),
+        nn.Linear(hidden_dim, output_dim),
+        nn.Sigmoid()
+    ])
+    return model
+
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
 class ModelMetrics:
     acc: float
     precision: float
     recall: float
+    confusion_matrix: np.array
 
 def train_graph_classification(
     model: geo_nn.Sequential,
     train_loader: DataLoader, 
     test_loader: DataLoader, 
     num_epochs: int,
+    weighted_loss: bool = False,
     verbose: bool = True):
     
-    loss_fn = nn.CrossEntropyLoss()
+    if not weighted_loss:
+        loss_fn = nn.CrossEntropyLoss()
+    else:
+        class_array = np.array(list(map(lambda data: data.y.numpy(), train_loader.dataset)))
+        weights = torch.Tensor(class_array.sum(axis=0) / class_array.shape[0])
+        loss_fn = nn.CrossEntropyLoss(weight=weights)
+
     optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     # Utility function for accuracy
@@ -78,7 +103,8 @@ def train_graph_classification(
         model_metrics = ModelMetrics(
             acc = metrics.accuracy_score(ys, yhats),
             precision = metrics.precision_score(ys, yhats, average="micro"),
-            recall = metrics.recall_score(ys, yhats, average="micro")
+            recall = metrics.recall_score(ys, yhats, average="micro"),
+            confusion_matrix = metrics.confusion_matrix(ys, yhats)
         )
         return model_metrics
     
@@ -97,4 +123,6 @@ def train_graph_classification(
         if verbose:
             print(f"[Epoch {epoch+1}/{num_epochs}] Loss: {loss:.4f} | "
             f"Train: {metrics_train.acc:.2f} {metrics_train.precision:.2f} {metrics_train.recall:.2f} | "
-            f"Test: {metrics_test.acc:.2f} {metrics_test.precision:.2f} {metrics_test.recall:.2f}")
+            f"Test: {metrics_test.acc:.2f} {metrics_test.precision:.2f} {metrics_test.recall:.2f} |\n"
+            f"Confusion_matrix: \n{metrics_train.confusion_matrix}\n"
+            )

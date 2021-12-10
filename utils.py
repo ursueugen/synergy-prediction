@@ -77,9 +77,36 @@ def encode_intervention_class(intervention_class: str) -> torch.Tensor:
 
 def build_datalist(
     synergy: pd.DataFrame, 
-    biogrid: pd.DataFrame
+    biogrid: pd.DataFrame,
+    subgraph: bool = False
     ) -> Tuple[list, list]:
     
+    G = nx.from_pandas_edgelist(
+            biogrid[[GENE_NAME_A_COL, GENE_NAME_B_COL]],
+            source=GENE_NAME_A_COL,
+            target=GENE_NAME_B_COL,
+        )
+
+    if subgraph:
+        synergyage_genes = get_synergyage_genes(synergy)
+        
+        # Get 1-neighbors of intervention genes
+        SG_nodes = set(synergyage_genes)
+        for gene in synergyage_genes:
+            for n in G.neighbors(gene):
+                SG_nodes.add(n)
+        
+        SG = G.__class__()
+        edge_list = []
+        for n, nbrs in G.adj.items():
+            if n not in SG_nodes:
+                continue
+            for nbr in set(nbrs.keys()):
+                edge_list.append((n, nbr))
+        SG.add_edges_from(edge_list)
+        G = SG.copy()
+        del SG
+
     data_list = []
     for i, row in synergy.iterrows():
         intervention_genes = row["genes_str"].split(";")
@@ -87,22 +114,19 @@ def build_datalist(
         # biogrid_mask = ( (~df_biogrid[GENE_NAME_A_COL].isin(intervention_genes)) & (~df_biogrid[GENE_NAME_B_COL].isin(intervention_genes)))
         # df_biogrid_trimmed = df_biogrid.loc[biogrid_mask].copy()
 
-        G = nx.from_pandas_edgelist(
-            biogrid[[GENE_NAME_A_COL, GENE_NAME_B_COL]],
-            source=GENE_NAME_A_COL,
-            target=GENE_NAME_B_COL,
-        )
-        for node in G.nodes:
+        G_intervention = G.copy()
+
+        for node in G_intervention.nodes:
             if node in intervention_genes:
-                G.nodes[node]["HAS_INTERVENTION"] = 1
+                G_intervention.nodes[node]["HAS_INTERVENTION"] = 1
             else:
-                G.nodes[node]["HAS_INTERVENTION"] = 0
+                G_intervention.nodes[node]["HAS_INTERVENTION"] = 0
         # graph_list.append(G)
 
         class_encoded: torch.Tensor = encode_intervention_class(row["LIFESPAN_CLASS"])
         # target_list.append(class_encoded)
     
-        data = geo_utils.from_networkx(G, group_node_attrs=["HAS_INTERVENTION"])
+        data = geo_utils.from_networkx(G_intervention, group_node_attrs=["HAS_INTERVENTION"])
         data.intervention_genes = intervention_genes
         data.source_idx = i
         data.x = data.x.type(torch.FloatTensor)
