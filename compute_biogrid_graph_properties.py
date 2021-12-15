@@ -5,89 +5,114 @@ Graph properties to evaluate:
     - Diameter (at least a lower bound) -> GNN width
     - Assortativity  # curiosity
     - Bridges -> to understand graph structure
+    - Communicability -> ?
 
     Reducing graph size
     - maximum independent set
     - dominating set
-    - Ramsey (?)
+    - Ramsey (?) - largest clique and maximum independent set
     - Treewidth
     - Vertex cover
+    - Communities [networkx]
 '''
 
 import json
+import functools
+from typing import Callable
+import warnings
 from datetime import datetime
 import pandas as pd
 import networkx as nx
 import networkx.algorithms as nx_algorithms
-import networkx.algorithms.clique as nx_clique
 
 import utils
 
 
-## Constants and arguments
 KEEP_LARGEST_CC = True
-OUTPUT_PATH = "./data/biogrid_data.json"
-##
+OUTPUT_PATH = "./data/biogrid_data.json" 
 
 
-## Main
-biogrid = utils.load_biogrid()
-G = utils.graph_from_biogrid(biogrid, keep_largest_cc=KEEP_LARGEST_CC)
+def print_execution_time(func: Callable) -> Callable:
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"[{datetime.now()}] [START] {func.__name__}")
+        result = func(*args, **kwargs)
+        print(f"[{datetime.now()}] [FINISH] {func.__name__}")
+        return result
+    return wrapper
 
-graph_data = {
-    "keep_largest_cc": KEEP_LARGEST_CC,
-}
+@print_execution_time
+def diameter_lower_bound(G: nx.Graph) -> float:
+    return nx.diameter(G)
+
+@print_execution_time
+def assortativity(G: nx.Graph) -> float:
+    return nx.degree_assortativity_coefficient(G)
+
+@print_execution_time
+def num_bridges(G: nx.Graph) -> int:
+    bridges = list(nx_algorithms.bridges(G))
+    return len( bridges )
+
+@print_execution_time
+def max_clique_len(G: nx.Graph) -> int:
+    max_clique: set = nx_algorithms.approximation.max_clique(G)
+    return len(max_clique)
+
+@print_execution_time
+def max_indep_set_size(G: nx.Graph) -> int:
+    max_set: set = nx_algorithms.approximation.maximum_independent_set(G)
+    return len(max_set)
+
+@print_execution_time
+def min_dominating_set_size(G: nx.Graph) -> int:
+    min_dominating_set: set = (
+        nx_algorithms.approximation
+        .min_edge_dominating_set(G)
+    )
+    return len(min_dominating_set)
+
+@print_execution_time
+def treewidth(G: nx.Graph) -> int:
+    treewidth, _ = nx_algorithms.approximation.treewidth_min_degree(G)
+    return treewidth
+
+@print_execution_time
+def min_weighted_vertex_cover_size(G: nx.Graph) -> int:
+    min_weighted_cover: set = (
+        nx_algorithms.approximation
+        .min_weighted_vertex_cover(G)
+    )
+    return len(min_weighted_cover)
 
 
-### Basic stats
-graph_data = dict(graph_data, **{
-    "num_nodes": None,
-    "num_edges": None,
-    "num_connected_components": None,
-    "sizes_top_connected_components": None,
+if __name__ == "__main__":
 
-})
-###
+    biogrid = utils.load_biogrid()
+    G = utils.graph_from_biogrid(biogrid, keep_largest_cc=KEEP_LARGEST_CC)
 
-### Graph diameter LB
-print(f"[{datetime.now()}] [START] Graph diameter LB")
-diameter_LB = nx.diameter(G) # lower bound by 2-sweep
-graph_data["diameter_LB"] = diameter_LB
-print(f"[{datetime.now()}] [STOP] Graph diameter LB")
-###
+    graph_data = {
+        "keep_largest_cc": KEEP_LARGEST_CC,
+        "warnings": [
+            "Communicability not computed.",
+            "Modularity not computed",
+        ]
+    }
 
-### Assortative mixing
-print(f"[{datetime.now()}] [START] Assortative mixing")
-r: float = nx.degree_assortativity_coefficient(G)
-graph_data["degree_assortativity"] = r
-print(f"[{datetime.now()}] [STOP] Assortative mixing")
-### 
+    graph_data = dict(graph_data, **{
+        "num_nodes": len(G.nodes),
+        "num_edges": len(G.edges),
+        "num_connected_components": nx_algorithms.components.number_connected_components(G),
+    })
 
-### Bridges
+    graph_data["diameter_LB"] = diameter_lower_bound(G)
+    graph_data["degree_assortativity"] = assortativity(G)
+    graph_data["num_bridges"] = num_bridges(G)
+    graph_data["max_clique_len"] = max_clique_len(G)
+    graph_data["max_indep_set_size"] = max_indep_set_size(G)
+    graph_data["min_dominating_set_size"] = min_dominating_set_size(G)
+    graph_data["treewidth"] = treewidth(G)
+    graph_data["min_weighted_vertex_cover_size"] = min_weighted_vertex_cover_size(G)
 
-###
-
-### Maximum independent set
-max_set: set = nx_clique.maximum_independent_set(G)
-graph_data["length_max_indep_set"] = len(max_set)
-###
-
-### Minimum dominating set
-min_dominating_set: set = (
-    nx.algorithms.approximation
-    .min_edge_dominating_set(G)
-)
-graph_data["length_min_dominating_set"] = len(min_dominating_set)
-###
-
-### Ramsey
-###
-
-### Treewidth
-###
-
-### Vertex cover
-###
-
-with open(OUTPUT_PATH, "w+") as fh:
-    json.dump(graph_data, fh)
+    with open(OUTPUT_PATH, "w+") as fh:
+        json.dump(graph_data, fh)

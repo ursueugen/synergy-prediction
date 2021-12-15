@@ -45,7 +45,7 @@ Todo:
     - local pooling might work as well in reducing size
         - max_local according to a "clustering", so need to define ~contraction sets anyways?
     - **Try first: Algebraic JC: fast and competitive.**
-    - 
+    - Check 'Communities' section from networkx
 
 - **Break the curse of anonymouse nodes**: https://andreasloukas.blog/2019/12/27/what-gnn-can-and-cannot-learn/
     - node degree could be an improvement
