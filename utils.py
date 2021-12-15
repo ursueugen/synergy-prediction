@@ -78,13 +78,16 @@ def encode_intervention_class(intervention_class: str) -> torch.Tensor:
 def build_datalist(
     synergy: pd.DataFrame, 
     biogrid: pd.DataFrame,
-    subgraph: bool = False
+    subgraph: bool = False,
+    reduced_synergyage: bool = False,
     ) -> Tuple[list, list]:
     
-    G = nx.from_pandas_edgelist(
-            biogrid[[GENE_NAME_A_COL, GENE_NAME_B_COL]],
-            source=GENE_NAME_A_COL,
-            target=GENE_NAME_B_COL,
+    G = graph_from_biogrid(biogrid)
+
+    if reduced_synergyage:
+        synergy = select_synergyage_genes(
+            synergy,
+            ['ced-4', 'par-5', 'sqt-1', 'nuc-1', 'skn-1', 'mes-4', 'daf-18', 'nuo-5', 'cmk-1']
         )
 
     if subgraph:
@@ -135,6 +138,20 @@ def build_datalist(
         data_list.append(data)
     return data_list
 
+def select_synergyage_genes(
+    df_syn: pd.DataFrame, 
+    genes_selection: List[str]
+    ) -> pd.DataFrame:
+    rows_selected = []
+    for i, row in df_syn.iterrows():
+        intervention_genes = row["genes_str"].split(";")
+        intersection = set(intervention_genes).intersection(set(genes_selection))
+        if len(intersection) > 0:
+            rows_selected.append(row)
+    df_syn_selection = pd.concat(rows_selected, axis=1).transpose()
+    return df_syn_selection
+
+
 def save_datalist(datalist: List[Data], name: str, override: bool = False) -> None:
     dir_path = Path(".") / DATALISTS_SAVE_DIR / name
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -155,9 +172,20 @@ def load_datalist(dir_path: Union[Path, str]) -> List[Data]:
         return data_list
 
 
-def graph_from_biogrid(df_biogrid: pd.DataFrame) -> nx.Graph:
-    return nx.from_pandas_edgelist(
+def graph_from_biogrid(
+    df_biogrid: pd.DataFrame, 
+    keep_largest_cc: bool = False
+    ) -> nx.Graph:
+
+    G = nx.from_pandas_edgelist(
         df_biogrid[[GENE_NAME_A_COL, GENE_NAME_B_COL]], 
         GENE_NAME_A_COL, 
         GENE_NAME_B_COL
     )
+
+    ccs = list(nx.connected_components(G))
+    ccs_len = list(map(len, ccs))
+    ccs_len_max = max(ccs_len)
+    max_len_cc_idx = ccs_len.index(ccs_len_max)
+    largest_cc = ccs[max_len_cc_idx]
+    return G.subgraph(largest_cc)

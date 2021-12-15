@@ -32,6 +32,9 @@ class TestGNN(unittest.TestCase):
     #         verbose=False)
     #     self.assertTrue(True)
 
+    # def test_GNN_constructor(self):
+        # raise NotImplementedError
+
 
 class TestGNNDemo(unittest.TestCase):
 
